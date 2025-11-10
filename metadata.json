@@ -1,0 +1,5 @@
+{
+  "name": "AI Letter Reply Generator",
+  "description": "An application to help users draft professional replies to letters, emails, and contracts by providing the incoming letter, key points, and relevant contract clauses.",
+  "requestFramePermissions": []
+}
