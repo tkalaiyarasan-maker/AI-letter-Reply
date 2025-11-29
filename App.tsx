@@ -1,16 +1,8 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
 import { generateReply, refineReply } from './services/geminiService';
 import type { FormState } from './types';
-
-// A custom error class to handle specific API key related issues
-class ApiKeyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ApiKeyError';
-  }
-}
 
 const App: React.FC = () => {
   const [formState, setFormState] = useState<FormState>({
@@ -18,45 +10,14 @@ const App: React.FC = () => {
     pointsToConsider: '',
     contractClauses: '',
   });
-  const [hasApiKey, setHasApiKey] = useState<boolean>(false);
   const [generatedReply, setGeneratedReply] = useState<string>('');
   const [suggestions, setSuggestions] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefining, setIsRefining] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const checkApiKey = useCallback(async () => {
-    try {
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      setHasApiKey(hasKey);
-    } catch (e) {
-      console.error('Error checking for API key:', e);
-      setHasApiKey(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    checkApiKey();
-  }, [checkApiKey]);
-
-  const handleSelectKey = async () => {
-    try {
-      await window.aistudio.openSelectKey();
-      // Optimistically assume the user selected a key to avoid race conditions.
-      setHasApiKey(true);
-      setError(null); // Clear previous errors
-    } catch (e) {
-      console.error('Error opening select key dialog:', e);
-      setError('Could not open the API key selection dialog.');
-    }
-  };
-
   const handleError = (err: unknown) => {
-    if (err instanceof ApiKeyError) {
-      setError(err.message);
-      // Reset the key state to force the user to select a key again
-      setHasApiKey(false);
-    } else if (err instanceof Error) {
+    if (err instanceof Error) {
       setError(`An error occurred: ${err.message}`);
     } else {
       setError('An unknown error occurred.');
@@ -66,10 +27,6 @@ const App: React.FC = () => {
   const MAX_LETTER_LENGTH = 3000000;
 
   const handleGenerate = useCallback(async () => {
-    if (!hasApiKey) {
-      setError("Please select a Gemini API key to proceed.");
-      return;
-    }
     setIsLoading(true);
     setError(null);
     setGeneratedReply('');
@@ -83,14 +40,10 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [formState, hasApiKey]);
+  }, [formState]);
 
   const handleRefine = useCallback(async () => {
     if (!suggestions.trim() || !generatedReply) return;
-    if (!hasApiKey) {
-      setError("Please select a Gemini API key to proceed.");
-      return;
-    }
     setIsRefining(true);
     setError(null);
 
@@ -103,10 +56,9 @@ const App: React.FC = () => {
     } finally {
       setIsRefining(false);
     }
-  }, [generatedReply, suggestions, hasApiKey]);
+  }, [generatedReply, suggestions]);
   
   const isGenerateDisabled =
-    !hasApiKey ||
     !formState.incomingLetter ||
     !formState.pointsToConsider || 
     isLoading ||
@@ -134,8 +86,6 @@ const App: React.FC = () => {
                 isLoading={isLoading}
                 isGenerateDisabled={isGenerateDisabled}
                 maxLetterLength={MAX_LETTER_LENGTH}
-                hasApiKey={hasApiKey}
-                onSelectKey={handleSelectKey}
             />
             <OutputPanel
                 generatedReply={generatedReply}

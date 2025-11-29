@@ -1,14 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import type { FormState } from '../types';
 
-// A custom error class to handle specific API key related issues
-class ApiKeyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ApiKeyError';
-  }
-}
-
 const systemInstruction = `
 You are an expert assistant for drafting official correspondence for a major construction company. Your task is to generate a professional reply letter based on the provided information.
 
@@ -79,7 +71,7 @@ ${contractClauses || 'N/A'}
 }
 
 const callApi = async (prompt: string, instruction: string): Promise<string> => {
-  // Create a new instance for every call to ensure the latest key is used.
+  // Use the API key from the environment variable.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
@@ -100,14 +92,13 @@ const callApi = async (prompt: string, instruction: string): Promise<string> => 
     console.error("Error calling Gemini API:", error);
     const message = error?.message || (error instanceof Error ? error.message : '');
 
-    // Handle specific error for invalid/missing API key from the environment
     if (message.includes('API key not valid') || message.includes('Requested entity was not found')) {
-        throw new ApiKeyError("The selected API key is not valid or has been revoked. Please select a different key.");
+        throw new Error("API Configuration Error: The API key provided in the environment is invalid.");
     }
     if (message.includes('token count exceeds')) {
         throw new Error("The provided text is too long. Please shorten it.");
     }
-    throw new Error("Failed to communicate with the AI model. The key may be invalid or there might be a network issue.");
+    throw new Error("Failed to communicate with the AI model. Please check your network connection.");
   }
 };
 
