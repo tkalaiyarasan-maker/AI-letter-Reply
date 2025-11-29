@@ -72,7 +72,12 @@ ${contractClauses || 'N/A'}
 
 const callApi = async (prompt: string, instruction: string): Promise<string> => {
   // Use the API key from the environment variable.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key is missing or invalid. Please ensure you have selected an API key.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   try {
     const response = await ai.models.generateContent({
@@ -83,7 +88,7 @@ const callApi = async (prompt: string, instruction: string): Promise<string> => 
       }
     });
 
-    const text = response.text.trim();
+    const text = response.text?.trim();
     if (!text) {
       throw new Error("Received an empty response from the AI. The content may be blocked.");
     }
@@ -93,12 +98,12 @@ const callApi = async (prompt: string, instruction: string): Promise<string> => 
     const message = error?.message || (error instanceof Error ? error.message : '');
 
     if (message.includes('API key not valid') || message.includes('Requested entity was not found')) {
-        throw new Error("API Configuration Error: The API key provided in the environment is invalid.");
+        throw new Error("API Configuration Error: The API key provided is invalid or has expired.");
     }
     if (message.includes('token count exceeds')) {
         throw new Error("The provided text is too long. Please shorten it.");
     }
-    throw new Error("Failed to communicate with the AI model. Please check your network connection.");
+    throw new Error(message || "Failed to communicate with the AI model. Please check your network connection.");
   }
 };
 
