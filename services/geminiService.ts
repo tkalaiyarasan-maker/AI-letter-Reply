@@ -1,11 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import type { FormState } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+// A custom error class to handle specific API key related issues
+class ApiKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiKeyError';
+  }
 }
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const systemInstruction = `
 You are an expert assistant for drafting official correspondence for a major construction company. Your task is to generate a professional reply letter based on the provided information.
@@ -77,6 +79,9 @@ ${contractClauses || 'N/A'}
 }
 
 const callApi = async (prompt: string, instruction: string): Promise<string> => {
+  // Create a new instance for every call to ensure the latest key is used.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -88,16 +93,21 @@ const callApi = async (prompt: string, instruction: string): Promise<string> => 
 
     const text = response.text.trim();
     if (!text) {
-      throw new Error("Received an empty response from the API.");
+      throw new Error("Received an empty response from the AI. The content may be blocked.");
     }
     return text;
   } catch (error: any) {
     console.error("Error calling Gemini API:", error);
-    const message = error?.error?.message || (error instanceof Error ? error.message : '');
-    if (message.includes('token count exceeds')) {
-        throw new Error("The provided text is too long and exceeds the maximum input size. Please summarize it or reduce its length.");
+    const message = error?.message || (error instanceof Error ? error.message : '');
+
+    // Handle specific error for invalid/missing API key from the environment
+    if (message.includes('API key not valid') || message.includes('Requested entity was not found')) {
+        throw new ApiKeyError("The selected API key is not valid or has been revoked. Please select a different key.");
     }
-    throw new Error("Failed to communicate with the AI model.");
+    if (message.includes('token count exceeds')) {
+        throw new Error("The provided text is too long. Please shorten it.");
+    }
+    throw new Error("Failed to communicate with the AI model. The key may be invalid or there might be a network issue.");
   }
 };
 

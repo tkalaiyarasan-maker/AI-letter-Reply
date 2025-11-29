@@ -10,6 +10,8 @@ interface InputPanelProps {
   isLoading: boolean;
   isGenerateDisabled: boolean;
   maxLetterLength: number;
+  hasApiKey: boolean;
+  onSelectKey: () => void;
 }
 
 const TextAreaWithLabel: React.FC<{
@@ -45,6 +47,8 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   isLoading,
   isGenerateDisabled,
   maxLetterLength,
+  hasApiKey,
+  onSelectKey,
 }) => {
   const [inputMode, setInputMode] = useState<'paste' | 'upload'>('paste');
   const [fileName, setFileName] = useState<string | null>(null);
@@ -53,7 +57,7 @@ export const InputPanel: React.FC<InputPanelProps> = ({
   const letterLength = formState.incomingLetter.length;
   const isOverLimit = letterLength > maxLetterLength;
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormState(prevState => ({
       ...prevState,
@@ -121,10 +125,25 @@ export const InputPanel: React.FC<InputPanelProps> = ({
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
-      <h2 className="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">
-        Provide Letter Details
-      </h2>
       <div className="space-y-6">
+        {!hasApiKey && (
+          <div className="p-4 bg-amber-50 border border-amber-300 rounded-lg text-center">
+            <h3 className="text-md font-semibold text-amber-800">Action Required</h3>
+            <p className="mt-1 text-sm text-amber-700">
+              To use this application, you need to select a Gemini API key from your Google AI Studio account.
+            </p>
+            <button
+              onClick={onSelectKey}
+              className="mt-3 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Select API Key
+            </button>
+            <p className="mt-2 text-xs text-gray-500">
+              Using a key may incur charges. Please see the <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">billing documentation</a> for details.
+            </p>
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Incoming Letter <span className="text-red-500">*</span>

@@ -1,8 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
 import { generateReply, refineReply } from './services/geminiService';
 import type { FormState } from './types';
+
+// A custom error class to handle specific API key related issues
+class ApiKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiKeyError';
+  }
+}
 
 const App: React.FC = () => {
   const [formState, setFormState] = useState<FormState>({
@@ -10,15 +18,58 @@ const App: React.FC = () => {
     pointsToConsider: '',
     contractClauses: '',
   });
+  const [hasApiKey, setHasApiKey] = useState<boolean>(false);
   const [generatedReply, setGeneratedReply] = useState<string>('');
   const [suggestions, setSuggestions] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefining, setIsRefining] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const checkApiKey = useCallback(async () => {
+    try {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      setHasApiKey(hasKey);
+    } catch (e) {
+      console.error('Error checking for API key:', e);
+      setHasApiKey(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkApiKey();
+  }, [checkApiKey]);
+
+  const handleSelectKey = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      // Optimistically assume the user selected a key to avoid race conditions.
+      setHasApiKey(true);
+      setError(null); // Clear previous errors
+    } catch (e) {
+      console.error('Error opening select key dialog:', e);
+      setError('Could not open the API key selection dialog.');
+    }
+  };
+
+  const handleError = (err: unknown) => {
+    if (err instanceof ApiKeyError) {
+      setError(err.message);
+      // Reset the key state to force the user to select a key again
+      setHasApiKey(false);
+    } else if (err instanceof Error) {
+      setError(`An error occurred: ${err.message}`);
+    } else {
+      setError('An unknown error occurred.');
+    }
+  };
+
   const MAX_LETTER_LENGTH = 3000000;
 
   const handleGenerate = useCallback(async () => {
+    if (!hasApiKey) {
+      setError("Please select a Gemini API key to proceed.");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     setGeneratedReply('');
@@ -28,18 +79,18 @@ const App: React.FC = () => {
       const reply = await generateReply(formState);
       setGeneratedReply(reply);
     } catch (err) {
-      if (err instanceof Error) {
-        setError(`Failed to generate reply: ${err.message}`);
-      } else {
-        setError('An unknown error occurred.');
-      }
+      handleError(err);
     } finally {
       setIsLoading(false);
     }
-  }, [formState]);
+  }, [formState, hasApiKey]);
 
   const handleRefine = useCallback(async () => {
     if (!suggestions.trim() || !generatedReply) return;
+    if (!hasApiKey) {
+      setError("Please select a Gemini API key to proceed.");
+      return;
+    }
     setIsRefining(true);
     setError(null);
 
@@ -48,17 +99,14 @@ const App: React.FC = () => {
       setGeneratedReply(refined);
       setSuggestions(''); // Clear suggestions after refinement
     } catch (err) {
-       if (err instanceof Error) {
-        setError(`Failed to refine reply: ${err.message}`);
-      } else {
-        setError('An unknown error occurred during refinement.');
-      }
+       handleError(err);
     } finally {
       setIsRefining(false);
     }
-  }, [generatedReply, suggestions]);
+  }, [generatedReply, suggestions, hasApiKey]);
   
-  const isGenerateDisabled = 
+  const isGenerateDisabled =
+    !hasApiKey ||
     !formState.incomingLetter ||
     !formState.pointsToConsider || 
     isLoading ||
@@ -78,24 +126,26 @@ const App: React.FC = () => {
       </header>
 
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <InputPanel
-            formState={formState}
-            setFormState={setFormState}
-            onGenerate={handleGenerate}
-            isLoading={isLoading}
-            isGenerateDisabled={isGenerateDisabled}
-            maxLetterLength={MAX_LETTER_LENGTH}
-          />
-          <OutputPanel
-            generatedReply={generatedReply}
-            isLoading={isLoading}
-            error={error}
-            suggestions={suggestions}
-            setSuggestions={setSuggestions}
-            onRefine={handleRefine}
-            isRefining={isRefining}
-          />
+        <div className="grid grid-cols-1 gap-8">
+            <InputPanel
+                formState={formState}
+                setFormState={setFormState}
+                onGenerate={handleGenerate}
+                isLoading={isLoading}
+                isGenerateDisabled={isGenerateDisabled}
+                maxLetterLength={MAX_LETTER_LENGTH}
+                hasApiKey={hasApiKey}
+                onSelectKey={handleSelectKey}
+            />
+            <OutputPanel
+                generatedReply={generatedReply}
+                isLoading={isLoading}
+                error={error}
+                suggestions={suggestions}
+                setSuggestions={setSuggestions}
+                onRefine={handleRefine}
+                isRefining={isRefining}
+            />
         </div>
       </main>
 
