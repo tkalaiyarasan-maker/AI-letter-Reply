@@ -1,136 +1,177 @@
+
 import { GoogleGenAI } from "@google/genai";
 import type { FormState } from '../types';
 
-const systemInstruction = `
-You are an expert assistant for drafting official correspondence for a major construction company. Your task is to generate a professional reply letter based on the provided information.
+const SYSTEM_INSTRUCTION = `
+You are an expert legal and corporate communications consultant.
 
-Your response MUST STRICTLY follow a standard professional letter format. The letter should be complete and ready to be used. Do not add any extra explanations, comments, or text outside of the letter format itself.
+**ROLE & DIRECTION ANALYSIS (CRITICAL):**
+1. **Identify the SENDER** of the provided "Incoming Letter" (Let's call them "Party A"). Look for the letterhead or the **Signatory** at the bottom.
+2. **Identify the RECIPIENT** of the provided "Incoming Letter" (Let's call them "Party B").
+3. **YOUR TASK**: Draft a reply **FROM Party B** addressed **TO Party A**.
 
-The format should include these sections in order:
-- Header: The letter MUST start with a 'Ref. No:' on the far left and the 'Date:' on the far right, on the same line. Generate a plausible new reference number for this reply letter that follows a pattern like 'LTC/MAHSR/Pkg-C4/CAM/[YEAR]/[SEQUENTIAL_NUMBER]'. Use the "Current Date for Reply" provided by the user for the date.
-- Recipient's details (extract from the incoming letter).
-- Subject Line (start with "SUB: " followed by the original subject from the incoming letter).
-- 'Reg.' line if present in the original letter.
-- Reference section ('Ref:'): This is critical. You must first list *all* existing numbered references from the 'Ref:' section of the incoming letter. Then, you must find the reference number of the incoming letter within its content and add it as the next numbered reference.
-- Salutation (e.g., "Dear Sir,").
-- Body of the letter:
-  - Acknowledge receipt of their letter, referencing it by its number from the 'Ref:' section you just created.
-  - Address the issues using the "Points to Consider for Reply".
-  - Support arguments with the "Relevant Contract Clauses" where applicable.
-  - Maintain a formal, polite, and assertive tone throughout.
-- Closing paragraph (e.g., "Thanking you and assuring you of our best services at all times.").
-- Sign-off ("Yours faithfully,").
+**RECIPIENT & KIND ATTENTION RULES (STRICT):**
+- You MUST address the reply to **Party A** (the organization/entity that sent the incoming letter).
+- **Kind Attn**: You MUST identify the specific person who **SIGNED** the incoming letter (usually found at the bottom right of the text/PDF).
+- The "Kind Attn" line must name that specific signatory. Do NOT use a generic name or the name of the person who was cc'd.
+- If the signatory's name is not found, use their Designation/Title.
 
-CRITICAL: DO NOT include any sender's address block, sign-off placeholders (like 'For [Company Name]', '[Your Name]', '[Your Title]'), or any footer details (Tel, Fax, Website, etc.). The output must be clean.
+**GUIDELINES:**
+1. **Language & Tone**: Use strictly contractual and formal language. Avoid casual phrasing. Be precise, firm, and authoritative. Use legal terminology where appropriate to strengthen the position.
+2. **Reference Management**:
+   - Identify the "Incoming Reference Number" and date from the provided letter/file.
+   - Identify any other references cited in the text (e.g., Contract numbers, previous letters, purchase orders).
+   - **ORDERING**: List all other references FIRST. The "Incoming Reference Number" MUST be the **LAST** item in the list.
+   - **LAYOUT**: **VERTICAL LIST**. Place each reference on a NEW LINE.
+   - **FORMAT**:
+     REF:
+     (1) [Other Ref 1]
+     (2) [Other Ref 2]
+     ...
+     (n) Your letter no. [Incoming Ref] dated [Date]
+   - **PROHIBITED**: Do NOT combine references into a single paragraph or single line.
+   - Generate a new outgoing Reference Number (e.g., REF/[CurrentYear]/[Random3Digits]) at the top.
+3. **Structure**:
+   - **Header**: Reference Number and Date.
+   - **To Address**: Name/Department of Party A (Sender of incoming).
+   - **Kind Attn**: [Name of Incoming Signatory].
+   - **Subject**: "SUB: Reply to [Incoming Subject] - [Contract/Project Name if available]" (Do NOT use bolding).
+   - **Ref Line**: (See Reference Management above - VERTICAL LIST).
+   - **Salutation**: Formal (e.g., "Dear Sir/Madam,").
+   - **Opening**: Acknowledge receipt of the incoming letter/document explicitly referencing its number and date.
+   - **Body**: Address the "Points to Cover" logically. State the facts/arguments clearly and strictly. Use "Contract Clauses" to substantiate arguments if provided, quoting specific clause numbers.
+   - **Closing**: Formal legal closing (e.g., "We reserve all our rights and remedies under the contract and applicable law.").
+   - **Sign-off**: "Yours faithfully," followed by placeholder [Party B Name/Title].
 
-Analyze the user-provided data below and generate the complete letter.
+**FORMATTING RESTRICTIONS:**
+- **NO MARKDOWN**: Do NOT use asterisks (*) for bolding or bullet points. Do NOT use hash signs (#) for headers.
+- Output **CLEAN PLAIN TEXT** only.
+- Maintain standard business letter spacing.
+
+Do NOT include any conversational filler before or after the letter. Output ONLY the letter content.
 `;
 
-const getOrdinalSuffix = (day: number): string => {
-  if (day > 3 && day < 21) return 'th';
-  switch (day % 10) {
-    case 1:  return "st";
-    case 2:  return "nd";
-    case 3:  return "rd";
-    default: return "th";
+const getApiKey = (): string => {
+  // STRICTLY use process.env.API_KEY.
+  const key = process.env.API_KEY;
+  if (!key) {
+    throw new Error("API Key is missing. The application requires process.env.API_KEY to be set in the server environment.");
   }
+  return key;
 };
 
-const getCurrentDateFormatted = (): string => {
-  const today = new Date();
-  const day = today.getDate();
-  const month = today.toLocaleString('default', { month: 'long' });
-  const year = today.getFullYear();
-  return `${day}${getOrdinalSuffix(day)} ${month} ${year}`;
+const createClient = () => {
+  const apiKey = getApiKey();
+  return new GoogleGenAI({ apiKey });
 };
 
-const buildUserPrompt = (data: FormState, currentDate: string): string => {
-  const { incomingLetter, pointsToConsider, contractClauses } = data;
-  return `
-**Current Date for Reply:**
-${currentDate}
+export const generateReplyStream = async (data: FormState) => {
+  const ai = createClient();
+  const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
----
-**Incoming Letter Content:**
-\`\`\`
-${incomingLetter}
-\`\`\`
+  // Define verbosity instruction based on selection
+  const verbosityInstruction = data.verbosity === 'elaborated'
+    ? "**STYLE/LENGTH:** WRITE A DETAILED, ELABORATED REPLY. Provide comprehensive explanations, detailed reasoning for each point, and full context. Do not cut corners; be thorough."
+    : "**STYLE/LENGTH:** WRITE A SIMPLE, CONCISE REPLY. Keep the letter short, reasonable, and strictly to the point. Focus only on the essentials and avoid over-explanation.";
 
----
-**Points to Consider for Reply:**
-\`\`\`
-${pointsToConsider}
-\`\`\`
+  // Construct the prompt context
+  const context = `
+**CONTEXT:**
+Current Date: ${currentDate}
+${verbosityInstruction}
 
----
-**Relevant Contract Clauses:**
-\`\`\`
-${contractClauses || 'N/A'}
-\`\`\`
-  `;
-}
+**POINTS TO COVER IN REPLY:**
+${data.pointsToConsider}
 
-const callApi = async (prompt: string, instruction: string): Promise<string> => {
-  // Use the API key from the environment variable.
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API Key is missing or invalid. Please ensure you have selected an API key.");
+**CONTRACT CLAUSES (IF ANY):**
+${data.contractClauses || "None provided."}
+
+**INSTRUCTION:**
+Draft the reply letter now based on the Incoming Letter provided. 
+- **CRITICAL**: Address the letter TO the sender (Signatory) of the incoming letter.
+- **KIND ATTN**: Use the name of the person who signed the incoming letter.
+- Extract all reference numbers from the incoming text/file and include them in the 'Ref' line.
+- **LAYOUT**: Put each reference on a NEW LINE (Vertical List).
+- Do NOT use stars (*) or bolding in the output.
+`;
+
+  let contentPart: any;
+
+  if (data.incomingFile) {
+    // If a file is uploaded, send it as inlineData along with text prompt
+    contentPart = {
+      parts: [
+        {
+          inlineData: {
+            mimeType: data.incomingFile.mimeType,
+            data: data.incomingFile.data
+          }
+        },
+        { text: `**INCOMING LETTER:** (See attached PDF)\n\n${context}` }
+      ]
+    };
+  } else {
+    // Standard text prompt
+    const fullPrompt = `
+${context}
+
+**INCOMING LETTER:**
+${data.incomingLetter}
+`;
+    contentPart = fullPrompt;
   }
-
-  const ai = new GoogleGenAI({ apiKey });
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await ai.models.generateContentStream({
       model: 'gemini-2.5-flash',
-      contents: prompt,
+      contents: contentPart,
       config: {
-        systemInstruction: instruction,
+        systemInstruction: SYSTEM_INSTRUCTION,
+        temperature: 0.5, 
       }
     });
 
-    const text = response.text?.trim();
-    if (!text) {
-      throw new Error("Received an empty response from the AI. The content may be blocked.");
-    }
-    return text;
+    return response;
   } catch (error: any) {
-    console.error("Error calling Gemini API:", error);
-    const message = error?.message || (error instanceof Error ? error.message : '');
-
-    if (message.includes('API key not valid') || message.includes('Requested entity was not found')) {
-        throw new Error("API Configuration Error: The API key provided is invalid or has expired.");
+    console.error("Gemini API Error:", error);
+    if (error.message?.includes("API Key is missing")) {
+        throw error;
     }
-    if (message.includes('token count exceeds')) {
-        throw new Error("The provided text is too long. Please shorten it.");
-    }
-    throw new Error(message || "Failed to communicate with the AI model. Please check your network connection.");
+    throw new Error("Failed to contact AI service. " + (error.message || "Unknown error"));
   }
 };
 
-export const generateReply = async (data: FormState): Promise<string> => {
-  const currentDate = getCurrentDateFormatted();
-  const userPrompt = buildUserPrompt(data, currentDate);
-  return callApi(userPrompt, systemInstruction);
-};
-
-export const refineReply = async (originalReply: string, suggestions: string): Promise<string> => {
-  const refineInstruction = `
-You are an expert assistant revising a draft letter. Your task is to apply the user's suggestions to the provided draft.
-- Maintain the original professional tone and letter format.
-- Integrate the suggestions seamlessly.
-- Only output the final, revised letter. Do not add any extra comments, explanations, or text outside of the letter itself.
-  `;
-  const refinePrompt = `
-**Original Draft Letter:**
-\`\`\`
+export const refineReplyStream = async (originalReply: string, suggestions: string) => {
+  const ai = createClient();
+  
+  const prompt = `
+**ORIGINAL DRAFT:**
 ${originalReply}
-\`\`\`
 
----
-**User's Suggestions for Refinement:**
-\`\`\`
+**USER SUGGESTIONS FOR REVISION:**
 ${suggestions}
-\`\`\`
+
+**INSTRUCTION:**
+Rewrite the letter above to incorporate the user's suggestions. 
+- Maintain the strict contractual/legal tone.
+- **REFERENCE LAYOUT**: Ensure each reference is on a SEPARATE LINE (Vertical List). Do not run them into a paragraph.
+- **KIND ATTN**: Ensure the "Kind Attn" is the person who sent/signed the original incoming letter, not the recipient.
+- **NO MARKDOWN**: Do NOT use asterisks (*) or bolding.
+- Output ONLY the revised letter.
   `;
-  return callApi(refinePrompt, refineInstruction);
+
+  try {
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: "You are an expert legal editor. Revise the provided business letter based on the user's feedback while maintaining legal precision, clean plain text formatting.",
+      }
+    });
+    
+    return response;
+  } catch (error: any) {
+    console.error("Gemini API Error:", error);
+    throw new Error("Failed to refine reply. " + (error.message || "Unknown error"));
+  }
 };
