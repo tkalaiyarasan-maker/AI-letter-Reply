@@ -84,6 +84,8 @@ const App: React.FC = () => {
     status === 'refining' ||
     formState.incomingLetter.length > MAX_LETTER_LENGTH;
 
+  const isApiKeyError = errorMessage?.includes("API Key is missing") || errorMessage?.includes("API_KEY");
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900" style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif' }}>
       {/* Header */}
@@ -116,8 +118,26 @@ const App: React.FC = () => {
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
               </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">{errorMessage}</p>
+              <div className="ml-3 flex-grow">
+                {isApiKeyError ? (
+                  <div>
+                    <h3 className="text-sm font-bold text-red-800">Missing API Key Configuration</h3>
+                    <div className="mt-2 text-sm text-red-700">
+                      <p className="mb-2">To use this application, you must configure your Google Gemini API key.</p>
+                      <ul className="list-disc list-inside space-y-1 ml-1">
+                        <li>Create a file named <code>.env</code> in the root folder of your project.</li>
+                        <li>Add the following line to the file:</li>
+                        <li className="font-mono bg-red-100 inline-block px-1 rounded mt-1">API_KEY=your_google_ai_key_here</li>
+                        <li className="mt-1">Restart your development server (terminal) to load the new key.</li>
+                      </ul>
+                      <p className="mt-2 text-xs">
+                        Don't have a key? Get one from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="underline hover:text-red-900">Google AI Studio</a>.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-red-700">{errorMessage}</p>
+                )}
               </div>
             </div>
           </div>

@@ -53,7 +53,9 @@ Do NOT include any conversational filler before or after the letter. Output ONLY
 
 const getApiKey = (): string => {
   // STRICTLY use process.env.API_KEY.
-  const key = process.env.API_KEY;
+  // We use a safe check to prevent ReferenceError if 'process' is undefined in some browser environments
+  const key = typeof process !== 'undefined' ? process.env?.API_KEY : undefined;
+  
   if (!key) {
     throw new Error("API Key is missing. The application requires process.env.API_KEY to be set in the server environment.");
   }
@@ -66,7 +68,6 @@ const createClient = () => {
 };
 
 export const generateReplyStream = async (data: FormState) => {
-  const ai = createClient();
   const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   // Define verbosity instruction based on selection
@@ -122,6 +123,7 @@ ${data.incomingLetter}
   }
 
   try {
+    const ai = createClient();
     const response = await ai.models.generateContentStream({
       model: 'gemini-2.5-flash',
       contents: contentPart,
@@ -142,8 +144,6 @@ ${data.incomingLetter}
 };
 
 export const refineReplyStream = async (originalReply: string, suggestions: string) => {
-  const ai = createClient();
-  
   const prompt = `
 **ORIGINAL DRAFT:**
 ${originalReply}
@@ -161,6 +161,7 @@ Rewrite the letter above to incorporate the user's suggestions.
   `;
 
   try {
+    const ai = createClient();
     const response = await ai.models.generateContentStream({
       model: 'gemini-2.5-flash',
       contents: prompt,
@@ -172,6 +173,9 @@ Rewrite the letter above to incorporate the user's suggestions.
     return response;
   } catch (error: any) {
     console.error("Gemini API Error:", error);
+    if (error.message?.includes("API Key is missing")) {
+        throw error;
+    }
     throw new Error("Failed to refine reply. " + (error.message || "Unknown error"));
   }
 };
